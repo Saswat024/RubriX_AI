@@ -2,6 +2,7 @@ import google.generativeai as genai
 import os
 import json
 from dotenv import load_dotenv
+from cache import generate_cache_key, get_cached_response, set_cached_response, normalize_code
 
 load_dotenv(override=True)
 api_key = os.getenv("GOOGLE_API_KEY")
@@ -13,6 +14,12 @@ genai.configure(api_key=api_key)
 
 async def evaluate_pseudocode(code: str):
     """Evaluate pseudocode using gemini-2.5-flash-lite"""
+
+    # Check cache first — normalize code to match trivially different inputs
+    cache_key = generate_cache_key("evaluate_pseudocode", normalize_code(code))
+    cached = get_cached_response("evaluate_pseudocode", cache_key)
+    if cached is not None:
+        return cached
 
     system_prompt = """You are an expert pseudocode evaluator with deep knowledge of algorithms, data structures, and software engineering best practices. Your task is to rigorously evaluate the provided pseudocode against specific criteria and return a structured assessment.:
 Evaluation Criteria:-
@@ -95,4 +102,9 @@ Important: Return ONLY the JSON object. Do not include any text before or after 
     response = model.generate_content(prompt)
     print("Raw response:", response.text)
     result = json.loads(response.text.strip().replace('```json', '').replace('```', ''))
+
+    # Store in cache
+    set_cached_response("evaluate_pseudocode", cache_key, result)
+
     return result
+

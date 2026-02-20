@@ -129,6 +129,24 @@ def init_database():
             )
         """)
 
+        # Create AI response cache table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ai_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                call_type TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                response TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                hit_count INTEGER DEFAULT 0,
+                UNIQUE(call_type, content_hash)
+            )
+        """)
+
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cache_lookup ON ai_cache(call_type, content_hash)"
+        )
+
         conn.commit()
 
 

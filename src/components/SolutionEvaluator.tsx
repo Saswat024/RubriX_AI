@@ -9,7 +9,7 @@ import { Label } from "./ui/label";
 import { Dialog, DialogContent } from "./ui/dialog";
 import { toast } from "sonner";
 import { api } from "../lib/api";
-import { ImagePlus, FileCode2, X, ZoomIn } from "lucide-react";
+import { ImagePlus, FileCode2, X, ZoomIn, FileText } from "lucide-react";
 
 interface SolutionEvaluatorProps {
   problemId: number | null;
@@ -26,6 +26,7 @@ export default function SolutionEvaluator({
   );
   const [pseudocode, setPseudocode] = useState("");
   const [flowchartImage, setFlowchartImage] = useState("");
+  const [flowchartIsPdf, setFlowchartIsPdf] = useState(false);
   const [evaluation, setEvaluation] = useState<any>(null);
   const [zoomedDiagram, setZoomedDiagram] = useState<{
     svg: string;
@@ -72,6 +73,8 @@ export default function SolutionEvaluator({
         problem_id: problemId,
         solution_type: solutionType,
         solution_content: content,
+        content_format:
+          flowchartIsPdf && solutionType === "flowchart" ? "pdf" : undefined,
       });
       const data = await response.json();
 
@@ -87,6 +90,10 @@ export default function SolutionEvaluator({
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      const isPdf =
+        file.type === "application/pdf" ||
+        file.name.toLowerCase().endsWith(".pdf");
+      setFlowchartIsPdf(isPdf);
       const reader = new FileReader();
       reader.onloadend = () => {
         setFlowchartImage(reader.result as string);
@@ -134,7 +141,7 @@ export default function SolutionEvaluator({
                 <input
                   type="file"
                   id="flowchart-upload"
-                  accept="image/*"
+                  accept="image/*,.pdf"
                   onChange={handleImageUpload}
                   className="hidden"
                 />
@@ -144,7 +151,7 @@ export default function SolutionEvaluator({
                     Click to upload flowchart image
                   </p>
                   <p className="text-xs text-muted-foreground mt-2">
-                    PNG, JPG, JPEG (max 5MB)
+                    PNG, JPG, JPEG, PDF (max 5MB)
                   </p>
                 </label>
               </div>
@@ -154,15 +161,27 @@ export default function SolutionEvaluator({
                   variant="destructive"
                   size="icon"
                   className="absolute top-2 right-2 z-10"
-                  onClick={() => setFlowchartImage("")}
+                  onClick={() => {
+                    setFlowchartImage("");
+                    setFlowchartIsPdf(false);
+                  }}
                 >
                   <X className="h-4 w-4" />
                 </Button>
-                <img
-                  src={flowchartImage}
-                  alt="Your flowchart"
-                  className="max-w-full h-auto mx-auto rounded"
-                />
+                {flowchartIsPdf ? (
+                  <div className="flex flex-col items-center justify-center py-8">
+                    <FileText className="h-16 w-16 text-primary mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      PDF file uploaded
+                    </p>
+                  </div>
+                ) : (
+                  <img
+                    src={flowchartImage}
+                    alt="Your flowchart"
+                    className="max-w-full h-auto mx-auto rounded"
+                  />
+                )}
               </div>
             )}
           </TabsContent>

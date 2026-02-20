@@ -3,6 +3,7 @@ import os
 import json
 from dotenv import load_dotenv
 from analyzers import config
+from cache import generate_cache_key, get_cached_response, set_cached_response
 
 load_dotenv(override=True)
 api_key = os.getenv("GOOGLE_API_KEY")
@@ -45,6 +46,16 @@ CRITICAL:
 """
 
     try:
+        # Check cache first
+        cache_key = generate_cache_key(
+            "validate_solution_relevance",
+            json.dumps(user_cfg, sort_keys=True),
+            problem_statement,
+        )
+        cached = get_cached_response("validate_solution_relevance", cache_key)
+        if cached is not None:
+            return cached
+
         model = genai.GenerativeModel(config.GEMINI_MODEL)
         prompt = f"""{system_prompt}
 
@@ -76,6 +87,9 @@ Determine if the user's solution is relevant to the problem."""
             result["confidence"] = 0.5
         if "reasoning" not in result:
             result["reasoning"] = "Unable to determine"
+
+        # Store in cache before returning
+        set_cached_response("validate_solution_relevance", cache_key, result)
 
         return result
 

@@ -2,6 +2,7 @@ import google.generativeai as genai
 import os
 import json
 from dotenv import load_dotenv
+from cache import generate_cache_key, get_cached_response, set_cached_response, normalize_code
 
 load_dotenv(override=True)
 api_key = os.getenv("GOOGLE_API_KEY")
@@ -13,6 +14,12 @@ genai.configure(api_key=api_key)
 
 async def evaluate_algorithm(text: str, eval_type: str = "algorithm"):
     """Evaluate algorithm/pseudocode from parsed documents using gemini-2.5-flash"""
+
+    # Check cache first — normalize code to match trivially different inputs
+    cache_key = generate_cache_key("evaluate_algorithm", normalize_code(text), eval_type)
+    cached = get_cached_response("evaluate_algorithm", cache_key)
+    if cached is not None:
+        return cached
 
     system_prompt = """You are an expert algorithm and computational thinking evaluator with deep expertise in:
 - Algorithm design and analysis
@@ -130,5 +137,8 @@ CRITICAL: Return ONLY the JSON object. No markdown, no code blocks, no explanato
     cleaned_text = response.text.strip()
     cleaned_text = cleaned_text.replace('```json', '').replace('```', '')
     result = json.loads(cleaned_text)
-    
+
+    # Store in cache
+    set_cached_response("evaluate_algorithm", cache_key, result)
+
     return result

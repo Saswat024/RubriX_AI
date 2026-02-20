@@ -9,7 +9,7 @@ import json
 from evaluators.flowchart import evaluate_flowchart
 from evaluators.pseudocode import evaluate_pseudocode
 from evaluators.algorithm import evaluate_algorithm
-from parsers.document_parser import parse_document
+from parsers.document_parser import parse_document, parse_pdf_smart
 from export.report_generator import (
     generate_pdf_report,
     generate_csv_report,
@@ -43,6 +43,7 @@ from analyzers.cfg_comparator import compare_cfgs
 from analyzers.cfg_visualizer import cfg_to_mermaid
 from analyzers.cfg_canonicalizer import canonicalize_cfg, calculate_cfg_similarity
 from analyzers.solution_validator import validate_solution_relevance
+from cache import get_cache_stats, cleanup_expired_cache
 
 app = FastAPI()
 
@@ -468,14 +469,16 @@ class ProblemUploadRequest(BaseModel):
 
 class ReferenceSolutionRequest(BaseModel):
     problem_id: int
-    solution_type: str
+    solution_type: str  # "pseudocode" or "flowchart"
     solution_content: str
+    content_format: Optional[str] = None  # "pdf" when uploading PDF files
 
 
 class EvaluateSolutionRequest(BaseModel):
     problem_id: int
-    solution_type: str
+    solution_type: str  # "pseudocode" or "flowchart"
     solution_content: str
+    content_format: Optional[str] = None  # "pdf" when uploading PDF files
 
 
 @app.post("/api/upload-problem")
@@ -558,11 +561,37 @@ async def api_upload_reference(
         if not problem:
             raise HTTPException(status_code=404, detail="Problem not found")
 
+        solution_content = request.solution_content
+
+        # Handle PDF content
+        if request.content_format == "pdf":
+            prefer_image = request.solution_type == "flowchart"
+            pdf_result = await parse_pdf_smart(
+                request.solution_content, prefer_image=prefer_image
+            )
+
+            if not pdf_result["success"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to parse PDF: {pdf_result.get('error', 'Unknown error')}",
+                )
+
+            solution_content = pdf_result["content"]
+            # If PDF contained image but we're in pseudocode mode, or text but flowchart mode
+            if (
+                pdf_result["content_type"] == "text"
+                and request.solution_type == "flowchart"
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="PDF contains text but flowchart mode was selected. Please upload a PDF with flowchart images or switch to pseudocode mode.",
+                )
+
         # Generate CFG
         if request.solution_type == "flowchart":
-            cfg = await flowchart_to_cfg(request.solution_content)
+            cfg = await flowchart_to_cfg(solution_content)
         else:
-            cfg = await pseudocode_to_cfg(request.solution_content)
+            cfg = await pseudocode_to_cfg(solution_content)
 
         # Canonicalize to base-level CFG
         bottom_line_cfg = await canonicalize_cfg(cfg, problem["problem_statement"])
@@ -623,11 +652,37 @@ async def api_evaluate_solution(
                 detail="No reference solution available for this problem",
             )
 
+        solution_content = request.solution_content
+
+        # Handle PDF content
+        if request.content_format == "pdf":
+            prefer_image = request.solution_type == "flowchart"
+            pdf_result = await parse_pdf_smart(
+                request.solution_content, prefer_image=prefer_image
+            )
+
+            if not pdf_result["success"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to parse PDF: {pdf_result.get('error', 'Unknown error')}",
+                )
+
+            solution_content = pdf_result["content"]
+            # If PDF contained text but we're in flowchart mode
+            if (
+                pdf_result["content_type"] == "text"
+                and request.solution_type == "flowchart"
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="PDF contains text but flowchart mode was selected. Please upload a PDF with flowchart images or switch to pseudocode mode.",
+                )
+
         # Generate CFG from user solution
         if request.solution_type == "flowchart":
-            user_cfg = await flowchart_to_cfg(request.solution_content)
+            user_cfg = await flowchart_to_cfg(solution_content)
         else:
-            user_cfg = await pseudocode_to_cfg(request.solution_content)
+            user_cfg = await pseudocode_to_cfg(solution_content)
 
         user_cfg_dict = cfg_to_dict(user_cfg)
 
@@ -919,3 +974,16 @@ async def api_delete_problem(problem_id: int, user_id: int = Depends(get_current
     except Exception as e:
         print(f"Error deleting problem: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/cache-stats")
+async def api_cache_stats():
+    """Get AI response cache statistics"""
+    return get_cache_stats()
+
+
+@app.post("/api/cache-cleanup")
+async def api_cache_cleanup():
+    """Remove expired cache entries"""
+    removed = cleanup_expired_cache()
+    return {"removed_entries": removed}

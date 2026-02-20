@@ -7,6 +7,7 @@ from typing import List, Dict, Optional
 from . import config
 from . import utils
 from . import prompts
+from cache import generate_cache_key, get_cached_response, set_cached_response, normalize_code
 
 genai.configure(api_key=config.GOOGLE_API_KEY)
 
@@ -78,6 +79,21 @@ def validate_cfg(cfg_data: dict) -> dict:
 async def pseudocode_to_cfg(pseudocode: str) -> CFG:
     """Convert pseudocode to CFG using Gemini AI"""
 
+    # Check cache first — normalize code to match trivially different inputs
+    cache_key = generate_cache_key("pseudocode_to_cfg", normalize_code(pseudocode))
+    cached = get_cached_response("pseudocode_to_cfg", cache_key)
+    if cached is not None:
+        # Reconstruct CFG from cached dict
+        cached = validate_cfg(cached)
+        nodes = [CFGNode(**node) for node in cached["nodes"]]
+        return CFG(
+            nodes=nodes,
+            edges=cached["edges"],
+            complexity=cached["complexity"],
+            num_paths=cached["num_paths"],
+            nesting_depth=cached["nesting_depth"],
+        )
+
     try:
         model = genai.GenerativeModel(config.GEMINI_MODEL)
         prompt = f"{prompts.PSEUDOCODE_TO_CFG_PROMPT}\n\nPseudocode:\n{pseudocode}"
@@ -92,13 +108,18 @@ async def pseudocode_to_cfg(pseudocode: str) -> CFG:
 
         # Convert to CFG object
         nodes = [CFGNode(**node) for node in result["nodes"]]
-        return CFG(
+        cfg = CFG(
             nodes=nodes,
             edges=result["edges"],
             complexity=result["complexity"],
             num_paths=result["num_paths"],
             nesting_depth=result["nesting_depth"],
         )
+
+        # Store in cache (as dict for serialization)
+        set_cached_response("pseudocode_to_cfg", cache_key, result)
+
+        return cfg
     except json.JSONDecodeError as e:
         print(f"JSON parsing error: {e}")
         print(f"Response text: {response.text}")
@@ -142,6 +163,20 @@ async def pseudocode_to_cfg(pseudocode: str) -> CFG:
 async def flowchart_to_cfg(base64_image: str) -> CFG:
     """Convert flowchart image to CFG using Gemini vision"""
 
+    # Check cache first
+    cache_key = generate_cache_key("flowchart_to_cfg", base64_image)
+    cached = get_cached_response("flowchart_to_cfg", cache_key)
+    if cached is not None:
+        cached = validate_cfg(cached)
+        nodes = [CFGNode(**node) for node in cached["nodes"]]
+        return CFG(
+            nodes=nodes,
+            edges=cached["edges"],
+            complexity=cached["complexity"],
+            num_paths=cached["num_paths"],
+            nesting_depth=cached["nesting_depth"],
+        )
+
     try:
         # Decode base64 image
         image_data = base64_image.split(",")[1] if "," in base64_image else base64_image
@@ -160,13 +195,18 @@ async def flowchart_to_cfg(base64_image: str) -> CFG:
 
         # Convert to CFG object
         nodes = [CFGNode(**node) for node in result["nodes"]]
-        return CFG(
+        cfg = CFG(
             nodes=nodes,
             edges=result["edges"],
             complexity=result["complexity"],
             num_paths=result["num_paths"],
             nesting_depth=result["nesting_depth"],
         )
+
+        # Store in cache
+        set_cached_response("flowchart_to_cfg", cache_key, result)
+
+        return cfg
     except json.JSONDecodeError as e:
         print(f"JSON parsing error: {e}")
         print(f"Response text: {response.text}")

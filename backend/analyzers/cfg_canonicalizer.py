@@ -4,6 +4,7 @@ from .cfg_generator import CFG, CFGNode, cfg_to_dict
 from . import config
 from . import utils
 from . import prompts
+from cache import generate_cache_key, get_cached_response, set_cached_response
 
 genai.configure(api_key=config.GOOGLE_API_KEY)
 
@@ -71,6 +72,13 @@ async def canonicalize_cfg(cfg: CFG, problem_statement: str) -> dict:
 
     try:
         cfg_dict = cfg_to_dict(cfg)
+
+        # Check cache first
+        cache_key = generate_cache_key("canonicalize_cfg", json.dumps(cfg_dict, sort_keys=True), problem_statement)
+        cached = get_cached_response("canonicalize_cfg", cache_key)
+        if cached is not None:
+            return cached
+
         model = genai.GenerativeModel(config.GEMINI_MODEL)
         prompt = f"""{prompts.CANONICALIZE_CFG_PROMPT}
 
@@ -90,6 +98,9 @@ Generate the canonical base-level CFG that captures the essential algorithmic st
 
         # Validate and ensure required fields
         result = validate_canonical_cfg(result)
+
+        # Store in cache
+        set_cached_response("canonicalize_cfg", cache_key, result)
 
         return result
 
@@ -118,6 +129,17 @@ Generate the canonical base-level CFG that captures the essential algorithmic st
 async def calculate_cfg_similarity(user_cfg: dict, reference_cfg: dict, problem_statement: str = None) -> dict:
     """Calculate structural similarity between user CFG and reference CFG"""
 
+    # Check cache first
+    cache_key = generate_cache_key(
+        "calculate_cfg_similarity",
+        json.dumps(user_cfg, sort_keys=True),
+        json.dumps(reference_cfg, sort_keys=True),
+        str(problem_statement),
+    )
+    cached = get_cached_response("calculate_cfg_similarity", cache_key)
+    if cached is not None:
+        return cached
+
     try:
         model = genai.GenerativeModel(config.GEMINI_MODEL)
         problem_context = f"\n\nProblem Statement:\n{problem_statement}\n" if problem_statement else ""
@@ -140,6 +162,9 @@ THEN: Evaluate how well the user's solution matches the canonical structure."""
 
         # Validate and ensure required fields
         result = validate_similarity_result(result)
+
+        # Store in cache
+        set_cached_response("calculate_cfg_similarity", cache_key, result)
 
         return result
 

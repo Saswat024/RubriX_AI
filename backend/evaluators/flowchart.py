@@ -5,6 +5,7 @@ import base64
 from PIL import Image
 from io import BytesIO
 from dotenv import load_dotenv
+from cache import generate_cache_key, get_cached_response, set_cached_response
 
 load_dotenv(override=True)
 api_key = os.getenv("GOOGLE_API_KEY")
@@ -16,6 +17,12 @@ genai.configure(api_key=api_key)
 
 async def evaluate_flowchart(base64_image: str):
     """Evaluate flowchart using gemini-2.5-flash-lite with image input"""
+
+    # Check cache first
+    cache_key = generate_cache_key("evaluate_flowchart", base64_image)
+    cached = get_cached_response("evaluate_flowchart", cache_key)
+    if cached is not None:
+        return cached
 
     system_prompt = """You are an expert flowchart evaluator with extensive knowledge of process modeling, algorithmic representation, and standard flowchart conventions (ISO 5807 and related standards). Your task is to analyze the uploaded flowchart image and provide a comprehensive, objective evaluation.
 Evaluation Criteria
@@ -128,4 +135,8 @@ Critical: Return ONLY the JSON object with no surrounding text, markdown code bl
     response = model.generate_content([prompt, image])
     print("Raw response:", response.text)
     result = json.loads(response.text.strip().replace('```json', '').replace('```', ''))
+
+    # Store in cache
+    set_cached_response("evaluate_flowchart", cache_key, result)
+
     return result

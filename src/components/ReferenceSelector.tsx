@@ -6,7 +6,7 @@ import { Textarea } from "./ui/textarea";
 import { Badge } from "./ui/badge";
 import { toast } from "sonner";
 import { api } from "../lib/api";
-import { ImagePlus, X, ZoomIn } from "lucide-react";
+import { ImagePlus, X, ZoomIn, FileText } from "lucide-react";
 import { Dialog, DialogContent } from "./ui/dialog";
 
 interface ReferenceSelectorProps {
@@ -32,6 +32,7 @@ export default function ReferenceSelector({
     code: string;
   } | null>(null);
   const [viewMode, setViewMode] = useState<"cfg" | "code">("cfg");
+  const [flowchartIsPdf, setFlowchartIsPdf] = useState(false);
 
   useEffect(() => {
     if (referenceData?.mermaid_diagram && viewMode === "cfg") {
@@ -101,6 +102,8 @@ export default function ReferenceSelector({
         problem_id: problemId,
         solution_type: uploadMode,
         solution_content: content,
+        content_format:
+          flowchartIsPdf && uploadMode === "flowchart" ? "pdf" : undefined,
       });
       const data = await response.json();
 
@@ -118,6 +121,10 @@ export default function ReferenceSelector({
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      const isPdf =
+        file.type === "application/pdf" ||
+        file.name.toLowerCase().endsWith(".pdf");
+      setFlowchartIsPdf(isPdf);
       const reader = new FileReader();
       reader.onloadend = () => {
         setFlowchartImage(reader.result as string);
@@ -178,7 +185,7 @@ export default function ReferenceSelector({
                     <input
                       type="file"
                       id="reference-flowchart-upload"
-                      accept="image/*"
+                      accept="image/*,.pdf"
                       onChange={handleImageUpload}
                       className="hidden"
                     />
@@ -191,7 +198,7 @@ export default function ReferenceSelector({
                         Click to upload flowchart image
                       </p>
                       <p className="text-xs text-muted-foreground mt-2">
-                        PNG, JPG, JPEG (max 5MB)
+                        PNG, JPG, JPEG, PDF (max 5MB)
                       </p>
                     </label>
                   </div>
@@ -201,15 +208,27 @@ export default function ReferenceSelector({
                       variant="destructive"
                       size="icon"
                       className="absolute top-2 right-2 z-10"
-                      onClick={() => setFlowchartImage("")}
+                      onClick={() => {
+                        setFlowchartImage("");
+                        setFlowchartIsPdf(false);
+                      }}
                     >
                       <X className="h-4 w-4" />
                     </Button>
-                    <img
-                      src={flowchartImage}
-                      alt="Reference flowchart"
-                      className="max-w-full h-auto mx-auto rounded"
-                    />
+                    {flowchartIsPdf ? (
+                      <div className="flex flex-col items-center justify-center py-8">
+                        <FileText className="h-16 w-16 text-primary mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          PDF file uploaded
+                        </p>
+                      </div>
+                    ) : (
+                      <img
+                        src={flowchartImage}
+                        alt="Reference flowchart"
+                        className="max-w-full h-auto mx-auto rounded"
+                      />
+                    )}
                   </div>
                 )}
               </TabsContent>

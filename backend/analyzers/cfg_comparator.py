@@ -5,6 +5,7 @@ from .cfg_generator import CFG, cfg_to_dict
 from . import config
 from . import utils
 from . import prompts
+from cache import generate_cache_key, get_cached_response, set_cached_response
 
 genai.configure(api_key=config.GOOGLE_API_KEY)
 
@@ -34,7 +35,18 @@ async def compare_cfgs(cfg1: CFG, cfg2: CFG, problem_analysis: dict) -> dict:
 
     cfg1_dict = cfg_to_dict(cfg1)
     cfg2_dict = cfg_to_dict(cfg2)
-    
+
+    # Check cache first
+    cache_key = generate_cache_key(
+        "compare_cfgs",
+        json.dumps(cfg1_dict, sort_keys=True),
+        json.dumps(cfg2_dict, sort_keys=True),
+        json.dumps(problem_analysis, sort_keys=True),
+    )
+    cached = get_cached_response("compare_cfgs", cache_key)
+    if cached is not None:
+        return cached
+
     model = genai.GenerativeModel(config.GEMINI_MODEL)
     prompt = f"""{system_prompt}
 
@@ -56,4 +68,8 @@ Compare these solutions and determine which is better."""
     print("Comparison response:", response.text)
     
     result = utils.parse_json_response(response.text)
+
+    # Store in cache
+    set_cached_response("compare_cfgs", cache_key, result)
+
     return result
